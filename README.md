@@ -1,3 +1,2 @@
-# vegetarian-influence
-Here are some edits
-Look at what great edits they are
+# Walkability & Affordability
+This project examines neighbourhood-level walkability and housing affordability in Canadian cities.
