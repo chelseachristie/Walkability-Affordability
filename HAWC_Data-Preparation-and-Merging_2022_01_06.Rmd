@@ -1,0 +1,210 @@
+---
+title: "HAWC_CANUE_Data_Preparation"
+author: "Chelsea Christie"
+date: "5/9/2021"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Start with loading packages
+
+```{r load_packages, echo=FALSE}
+
+# Load/Install required packages ---------------------
+
+pacman::p_load(effectsize, ggeffects, ggpubr, ggstatsplot, janitor, interactions, jtools, knitr, parameters, rio, remotes, report, rstatix, tidyverse,  see, sjPlot, sjmisc) # load/install required packages
+
+```
+
+# Bring in data, rename variables, drop non-CMA DAs, and check for duplicates
+
+```{r}
+
+########################## Can-ALE data ##########################################
+
+Can_ALE_2006_dataset <- rio::import("Data/CanALE_2006.csv") %>% 
+ rename(
+    "DA_ID" ="dauid",
+    "intersections_2006" ="int_d",
+    "dwelling_density_2006" ="dwl_d",
+    "z_intersections_2006" ="z_int_d",
+    "z_dwelling_density_2006" ="z_dwl_d",
+    "z_ALE_score_2006" ="ale_index",
+    "ALE_class_2006" ="ale_class")
+
+# Are there any DAs that are duplicated?
+Can_ALE_2006_dataset$DA_ID[duplicated(Can_ALE_2006_dataset$DA_ID)] 
+length(unique(Can_ALE_2006_dataset$DA_ID))
+
+# is there any missing data?
+sapply(Can_ALE_2006_dataset, function(x) sum(is.na(x))) # returns the number of missing values there are for each variable
+
+
+Can_ALE_2016_dataset <- rio::import("Data/CanALE_2016.csv") %>% 
+ rename(
+   "DA_ID" ="dauid",
+    "intersections_2016" ="int_d",
+    "dwelling_density_2016" ="dwl_d",
+    "z_intersections_2016" ="z_int_d",
+    "z_dwelling_density_2016" ="z_dwl_d",
+    "z_ALE_score_2016" ="ale_index",
+    "ALE_class_2016" ="ale_class",
+    "points_of_interest_2016" ="poi",
+    "z_points_of_interest_2016" ="z_poi",
+    "transit_stops_2016" ="transit",
+    "z_transit_stops_2016" ="z_transit",
+    "ALE_transit_score_2016" ="ale_tranist",
+    "ALE_transit_class_2016" ="ale_transit_class")
+
+# Are there any DAs that are duplicated?
+Can_ALE_2016_dataset$DA_ID[duplicated(Can_ALE_2016_dataset$DA_ID)] 
+length(unique(Can_ALE_2016_dataset$DA_ID))
+
+# is there any missing data?
+sapply(Can_ALE_2016_dataset, function(x) sum(is.na(x))) # this function returns the number of missing values there are for each variable
+
+########################## Census data ##########################################
+
+######## 2006 census data
+
+census_2006_dataset <- rio::import("Data/2006_raw-census-data_2021_05_28.xls") %>% 
+ select(c("DAUID", "CMATYPE", "CMANAME", "CMAUID", "PRNAME", "PRUID", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX")) %>%
+rename(
+    "DA_ID" = "DAUID",
+    "CMA_yes_or_no_2006" = "CMATYPE",
+    "CMA_name_2006" = "CMANAME",
+    "CMA_ID_number_2006" = "CMAUID",
+    "province_name_2006" = "PRNAME",
+    "province_ID_number_2006" = "PRUID",
+    "private_households_by_tenure_2006" = "ONE",
+    "tenants_mean_shelter_costs_2006" = "TWO",
+    "tenants_overpaying_for_shelter_2006" = "THREE",
+    "mean_dwelling_value_2006" = "FOUR",
+    "owners_mean_shelter_costs_2006" = "FIVE",
+    "owners_overpaying_for_shelter_2006" = "SIX",)
+
+# check whether any non-CMA data is included
+table(census_2006_dataset$CMA_yes_or_no_2006, useNA = "ifany")
+
+# drop non-CMA DAs 
+census_2006_dataset <- census_2006_dataset %>% 
+  subset(CMA_yes_or_no_2006 == "B")
+
+# Are there any DAs that are duplicated?
+length(unique(census_2006_dataset$DA_ID)) # 33978 - 33804 = 174 duplicates
+
+# remove DA duplicates
+census_2006_dataset <- unique(census_2006_dataset)
+
+# is there any missing data?
+ sapply(census_2006_dataset, function(x) sum(is.na(x))) # returns the number of missing values there are for each variable
+
+
+######### 2016 census data
+
+census_2016_dataset <- rio::import("Data/2016_raw-census-data_2021_05_28.xls") %>% 
+ select(c("DAUID", "CMATYPE", "CMANAME", "CMAUID", "PRNAME", "PRUID", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE")) %>%
+rename(
+   "DA_ID" = "DAUID",
+    "CMA_yes_or_no_2016" = "CMATYPE",
+    "CMA_name_2016" = "CMANAME",
+    "CMA_ID_number_2016" = "CMAUID",
+    "province_name_2016" = "PRNAME",
+    "province_ID_number_2016" = "PRUID",
+    "private_households_by_tenure_2016" = "ONE",
+    "overall_households_with_income_2016" = "TWO",
+    "owners_percent_with_mortgage_2016" = "THREE",
+    "owners_percent_overpaying_for_shelter_2016" = "FOUR",
+    "owners_median_shelter_costs_2016" = "FIVE",
+    "owners_mean_shelter_costs_2016" = "SIX",
+    "median_dwelling_value_2016" = "SEVEN",
+    "mean_dwelling_value_2016" = "EIGHT",
+    "subsidized_housing_percent_2016" = "NINE",
+    "tenants_percent_overpaying_for_shelter_2016" = "TEN",
+    "tenants_median_shelter_costs_2016" = "ELEVEN",
+    "tenants_mean_shelter_costs_2016" = "TWELVE")
+
+# check whether any non-CMA data is included
+table(census_2016_dataset$CMA_yes_or_no_2016, useNA = "ifany") # I don't know why this code worked for 2006, but not 2016...
+
+#test_census_2016 <- janitor::remove_constant(census_2016_dataset, na.rm = TRUE, quiet = FALSE)  # this code would remove all variables, where every case has the same value -- just ran it once to check that CMATYPE was the same value for all rows
+
+# Are there any DAs that are duplicated?
+census_2016_dataset$DA_ID[duplicated(census_2016_dataset$DA_ID)] 
+length(unique(census_2016_dataset$DA_ID)) # 0 duplicates
+
+# is there any missing data?
+sapply(census_2016_dataset, function(x) sum(is.na(x))) # returns the number of missing values there are for each variable
+
+```
+
+# Merge datasets
+
+```{r}
+
+################# combine 2006 census data with 2006 Can-ALE data ##############################
+
+# check that the merging variable (DA_ID) are both non-character/string variable types in both datasets
+
+str(Can_ALE_2006_dataset$DA_ID)
+str(census_2006_dataset$DA_ID) # character type
+
+# first need to convert DA_ID variable type in the census dataset from character type to numeric 
+
+census_2006_dataset$DA_ID <- as.numeric(census_2006_dataset$DA_ID)
+
+str(census_2006_dataset$DA_ID) # DA_ID is numeric now too
+
+# Can_ALE 2006 has 54 624 observations and 7 variables
+# Census 2006 data has 33 804 observations and 12 variables
+# Our merging goal is to have 33804 observations (# of rows in the census_2006 dataset that is already restricted to CMA DAs) and 18 variables (12 + 7 - 1 (for the duplicated DA_ID variable))
+
+# merging the 2006 datasets (using left_join so that we only get all the rows included in the census_2006_dataset)
+
+dataset_2006 <- left_join(census_2006_dataset, Can_ALE_2006_dataset, by="DA_ID")
+str(dataset_2006) 
+
+
+################# combine 2016 census data with 2016 Can-ALE data ##############################
+
+
+# check that the merging variable (DA_ID) are both non-character/string variable types in both datasets
+
+str(Can_ALE_2016_dataset$DA_ID)
+str(census_2016_dataset$DA_ID) # character type
+
+# first need to convert DA_ID variable in the census dataset from character to numeric type
+
+census_2016_dataset$DA_ID <- as.numeric(census_2016_dataset$DA_ID)
+
+str(census_2016_dataset$DA_ID) # good to see that DA_ID is numeric now too
+
+# Can_ALE 2016 has 56 589 observations and 13 variables
+# Census 2016 data has 36 169 observations and 18 variables
+# merged data should have 36 169 observations and 30 variables (18 + 13 - 1 (for the duplicated DA_ID variable)
+
+# merging the 2016 datasets (using left_join so that we only get all the rows included in the census_2016_dataset)
+
+dataset_2016 <- left_join(census_2016_dataset, Can_ALE_2016_dataset, by="DA_ID")
+str(dataset_2016)
+
+```
+
+# Save the merged datasets 
+
+```{r}
+
+saveRDS(dataset_2006, file = "dataset_2006.rds")
+
+saveRDS(dataset_2016, file = "dataset_2016.rds")
+
+
+```
+
+
