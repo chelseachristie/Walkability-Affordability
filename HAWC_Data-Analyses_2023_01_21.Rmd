@@ -1,0 +1,1456 @@
+---
+title: "HAWC_Data-Analyses"
+author: "Chelsea Christie"
+date: "01/13/2023"
+output: word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Start with loading packages
+
+```{r load_packages, echo=FALSE}
+
+# Load/Install favourite packages ---------------------
+
+pacman::p_load(collapse, correlation, easystats, effects, effectsize, flextable, forcats, ggeffects, ggpubr, ggridges, ggstatsplot, glmmTMB, gridExtra, gt, haven, here, interactions, janitor, jtools, knitr, lme4, margins, mice, misty, modelbased, naniar, officer, psych, reghelper, remotes, report, rio, rstatix, see, sjmisc, sjPlot, sjstats, stats, tableone, tidyverse, TMB) 
+
+```
+
+# Bring in data - Must Run
+
+```{r}
+
+dataset_2016 <- readRDS(file = "dataset_2016.rds")
+
+```
+
+######################################## Re-coding Variables ############################################
+
+# Re-codes and changing variable types - MUST RUN
+
+```{r}
+################## Re-coding variables to be missing that should be missing ###################################################
+## EXCEPT FOR HOME VALUES - I re-code those later ## 
+
+# re-code values to be missing in R language, i.e., "NA"
+
+dataset_2016 <- dataset_2016 %>%
+  mutate(intersections_2016 = na_if(intersections_2016, "."),
+         dwelling_density_2016 = na_if(dwelling_density_2016, "."),
+         points_of_interest_2016 = na_if(points_of_interest_2016, "."),
+         z_intersections_2016 = na_if(z_intersections_2016, "."),
+         z_dwelling_density_2016 = na_if(z_dwelling_density_2016, "."),
+         z_points_of_interest_2016 = na_if(z_points_of_interest_2016, "."),
+         z_ALE_score_2016 = na_if(z_ALE_score_2016, "."),
+         ALE_class_2016 = na_if(ALE_class_2016, "."),
+         transit_stops_2016 = na_if(transit_stops_2016, "."),
+         z_transit_stops_2016 = na_if(z_transit_stops_2016, "."),
+         ALE_transit_score_2016 = na_if(ALE_transit_score_2016, "."),
+         ALE_transit_class_2016 = na_if(ALE_transit_class_2016, "."))
+
+dataset_2016 <- dataset_2016 %>%
+   mutate(median_dwelling_value_2016  = na_if(median_dwelling_value_2016, "0"))
+
+#################### Making variables numeric that should be numeric #######################################################
+
+## 2016
+
+str(dataset_2016)
+
+dataset_2016 <- dataset_2016 %>% 
+  mutate_at(c("CMA_ID_number_2016", "province_ID_number_2016", "dwelling_density_2016", "points_of_interest_2016", "z_dwelling_density_2016", "z_ALE_score_2016", "ALE_class_2016", "transit_stops_2016", "z_transit_stops_2016", "ALE_transit_score_2016", "ALE_transit_class_2016"), as.numeric, na.rm = TRUE)
+
+str(dataset_2016)
+
+# create a variable identifying the 2016 DAs from CMAs with transit data and those without (Belleville, Peterborough, Saguenay, and Trois Rivières)
+
+dataset_2016 <- dataset_2016 %>%
+      mutate(
+        transit_DA = case_when( 
+          CMA_ID_number_2016  == "522" |
+          CMA_ID_number_2016  == "529" |
+          CMA_ID_number_2016  == "408" |
+          CMA_ID_number_2016  == "442" ~ 0,
+          CMA_ID_number_2016  != "522" |
+          CMA_ID_number_2016  != "529" |
+          CMA_ID_number_2016  != "408" |
+          CMA_ID_number_2016  != "442" ~ 1))
+
+table(dataset_2016$transit_DA) # makes sense because approx 3% of DAs should have no transit data
+
+# re-code the ALE_transit_score_2016 values to be missing for the DAs within CMAs with no transit data 
+dataset_2016$ALE_transit_score_2016 <- replace(dataset_2016$ALE_transit_score_2016, dataset_2016$transit_DA == 0, NA)
+
+# Make transit_DA variable a factor
+
+table(dataset_2016$transit_DA)
+
+dataset_2016$transit_DA <- factor(dataset_2016$transit_DA,
+                                  levels = c(0,1),
+                                  labels = c("No", "Yes"))
+
+table(dataset_2016$transit_DA)
+
+
+# Create new city name factor variable using the CMA_ID number variable (initially tried to just correct mis-spellings, but I couldn't get it to work properly)
+
+
+table(dataset_2016$CMA_name_2016, dataset_2016$CMA_ID_number_2016)
+
+dataset_2016 <-dataset_2016 %>% 
+ rename("city_name" = "CMA_ID_number_2016")
+    
+table(dataset_2016$CMA_name_2016)
+
+dataset_2016$city_name <- factor(dataset_2016$city_name,
+                                  levels = c(932, 568, 522, 543, 825, 835, 580, 550, 205,
+                                             537, 915, 521, 541, 810, 555, 305, 462, 532,
+                                             505, 529, 421, 705, 408, 310, 725, 433, 539,
+                                             1,   595, 535, 442, 933, 935, 559, 602),
+                                  labels = c("Abbotsford",
+                                              "Barrie",
+                                              "Belleville",
+                                              "Brantford",
+                                              "Calgary",
+                                              "Edmonton",
+                                              "Sudbury",
+                                              "Guelph",
+                                              "Halifax",
+                                              "Hamilton",
+                                              "Kelowna",
+                                              "Kingston",
+                                              "Kitchener",
+                                              "Lethbridge",
+                                              "London",
+                                              "Moncton",
+                                              "Montréal",
+                                              "Oshawa",
+                                              "Ottawa",
+                                              "Peterborough",
+                                              "Québec",
+                                              "Regina",
+                                              "Saguenay",
+                                              "Saint John",
+                                              "Saskatoon",
+                                              "Sherbrooke",
+                                              "St. Catharines",
+                                              "St. John's",
+                                              "Thunder Bay",
+                                              "Toronto",
+                                              "Trois Rivières",
+                                              "Vancouver",
+                                              "Victoria",
+                                              "Windsor",
+                                              "Winnipeg"))
+
+# 2016 - walkability_cat
+dataset_2016 <- dataset_2016 %>% 
+  mutate(
+    walkability_cat_2016 = case_when(
+      ALE_class_2016 == "1" ~ 'Very Low',
+      ALE_class_2016 == "2" ~ 'Low',
+      ALE_class_2016 == "3" ~ 'Moderate',
+      ALE_class_2016 == "4" ~ 'High',
+      ALE_class_2016 == "5" ~ 'Very High'))
+dataset_2016$walkability_cat_2016 <- factor(dataset_2016$walkability_cat_2016,
+                                            ordered = TRUE,
+                                            levels = c("Very Low", "Low", "Moderate", "High", "Very High"))
+# checking new variable
+dataset_2016 %>% 
+  tabyl(ALE_class_2016, walkability_cat_2016)
+
+dataset_2016 %>% 
+  tabyl(walkability_cat_2016, city_name)
+
+# 2016 - transit walkability categories
+dataset_2016 <- dataset_2016 %>% 
+  mutate(
+    t_walkability_cat_2016 = case_when(
+      ALE_transit_class_2016 == "1" ~ 'Very Low',
+      ALE_transit_class_2016 == "2" ~ 'Low',
+      ALE_transit_class_2016 == "3" ~ 'Moderate',
+      ALE_transit_class_2016 == "4" ~ 'High',
+      ALE_transit_class_2016 == "5" ~ 'Very High'))
+dataset_2016$t_walkability_cat_2016 <- factor(dataset_2016$t_walkability_cat_2016,
+                                            ordered = TRUE,
+                                            levels = c("Very Low", "Low", "Moderate", "High", "Very High"))
+# checking new variable
+dataset_2016 %>% 
+  tabyl(ALE_transit_class_2016, t_walkability_cat_2016)
+
+dataset_2016 %>% 
+  tabyl(t_walkability_cat_2016, city_name)
+
+
+############################ Re-coding of covariates ###############################################################
+
+# dwelling ages 
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_aged_56_plus_2016" = dataset_2016$dwellings_before_1960_2016 /
+                                              dataset_2016$total_dwellings_by_age_2016,
+             .after = "dwellings_before_1960_2016")
+  
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_aged_26_to_55_2016" = (dataset_2016$dwellings_61_to_80_2016  +
+                                                dataset_2016$dwellings_81_to_90_2016) /
+                                                dataset_2016$total_dwellings_by_age_2016,
+             .after = "dwellings_81_to_90_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_aged_6_to_25_2016" = (dataset_2016$dwellings_91_to_00_2016  +
+                                               dataset_2016$dwellings_01_to_05_2016  +
+                                               dataset_2016$dwellings_06_to_10_2016) /
+                                               dataset_2016$total_dwellings_by_age_2016,
+             .after = "dwellings_06_to_10_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_aged_under_5_years_2016" = dataset_2016$dwellings_11_to_16_2016 /
+                                                    dataset_2016$total_dwellings_by_age_2016,
+             .after = "dwellings_11_to_16_2016")
+
+# re-coding of proportion of single-detached homes
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_houses_2016" = dataset_2016$detached_houses_2016 /
+                                                    dataset_2016$total_dwellings_by_type_2016,
+             .after = "detached_houses_2016")
+
+# - proportion of dwellings in good condition (only need regular maintenance or minor repairs)
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_good_condition_2016" = (dataset_2016$dwellings_regular_maintenance_2016) /                                                                       dataset_2016$total_dwellings_by_condition_2016,
+             .after = "dwellings_regular_maintenance_2016")
+
+# - proportion of non-visible minorities
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_non_minorities_2016" = dataset_2016$non_minorities_2016 /
+                                                dataset_2016$total_population_by_minority_2016,
+             .after = "non_minorities_2016")
+
+# - proportion of non-immigrants
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_non_immigrants_2016" = dataset_2016$non_immigrants_2016 /
+                                                dataset_2016$total_population_by_immigrant_2016,
+             .after = "non_immigrants_2016")
+
+# proportion homeowners
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_homeowners_2016" = dataset_2016$owned_dwellings_2016 /
+                                            dataset_2016$total_dwellings_by_tenure_2016,
+             .after = "owned_dwellings_2016")
+
+# residential stability
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_non_movers_1_yr_2016" = dataset_2016$non_movers_one_year_2016 /
+                                            dataset_2016$total_mobility_one_year_2016,
+             .after = "non_movers_one_year_2016")
+
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "proportion_non_movers_5_yr_2016" = dataset_2016$non_movers_five_year_2016 /
+                                            dataset_2016$total_mobility_five_year_2016,
+             .after = "non_movers_five_year_2016")
+
+# re-scale income variables to be per $10,000
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "rescaled_income_2016" = dataset_2016$median_income_2016 / 10000,
+               .after = "median_income_2016")
+
+# re-code all proportion variables to have only 2 decimal places
+
+dataset_2016 <- dataset_2016 %>% 
+          mutate(across(c("z_ALE_score_2016",
+                          "ALE_transit_score_2016",
+                          "proportion_aged_56_plus_2016",
+                          "proportion_aged_26_to_55_2016",
+                          "proportion_aged_6_to_25_2016",
+                          "proportion_aged_under_5_years_2016",
+                          "proportion_houses_2016",
+                          "proportion_good_condition_2016",
+                          "proportion_non_minorities_2016",
+                          "proportion_non_immigrants_2016",
+                          "proportion_homeowners_2016",
+                          "proportion_non_movers_1_yr_2016",
+                          "proportion_non_movers_5_yr_2016"),
+                          ~ round(., 2))) 
+
+# re-code all proportion variables to truncate at 1 (none of these proportions should be over 100%!)
+
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_aged_56_plus_2016 = replace(proportion_aged_56_plus_2016, 
+                                              proportion_aged_56_plus_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_aged_26_to_55_2016 = replace(proportion_aged_26_to_55_2016, 
+                                              proportion_aged_26_to_55_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_aged_6_to_25_2016 = replace(proportion_aged_6_to_25_2016, 
+                                              proportion_aged_6_to_25_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_aged_under_5_years_2016 = replace(proportion_aged_under_5_years_2016, 
+                                              proportion_aged_under_5_years_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_houses_2016 = replace(proportion_houses_2016, 
+                                              proportion_houses_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_good_condition_2016 = replace(proportion_good_condition_2016, 
+                                              proportion_good_condition_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_non_minorities_2016 = replace(proportion_non_minorities_2016, 
+                                              proportion_non_minorities_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_non_immigrants_2016 = replace(proportion_non_immigrants_2016, 
+                                              proportion_non_immigrants_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_homeowners_2016 = replace(proportion_homeowners_2016, 
+                                          proportion_homeowners_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_non_movers_1_yr_2016 = replace(proportion_non_movers_1_yr_2016, 
+                                               proportion_non_movers_1_yr_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(prop_non_movers_5_yr_2016 = replace(proportion_non_movers_5_yr_2016, 
+                                              proportion_non_movers_5_yr_2016 > 1, 1))
+dataset_2016 <- dataset_2016 %>% 
+    mutate(percent_subsidized_housing_2016 = replace(subsidized_housing_percent_2016, 
+                                              subsidized_housing_percent_2016 > 100, 100))
+
+# create a variable for city_size
+# USed Statistics Canada Population Centre and Rural Area Classification 2016 to identify city sizes (large and medium cities = medium and small. I used CMAs with over 2 million inhabitatns in 2016 as the cut point for Extra Large Cities, over 1 million = large)  (https://www23.statcan.gc.ca/imdb/p3VD.pl?Function=getVD&TVD=339235&CVD=339236&CPV=A&CST=16012017&CLV=1&MLV=2)
+
+
+ dataset_2016 <- dataset_2016 %>% 
+  mutate(city_size = case_when(
+      city_name == "Abbotsford" ~ 1,
+      city_name == "Barrie" ~ 1,
+      city_name == "Belleville" ~ 0,
+      city_name == "Brantford" ~ 0,
+      city_name == "Calgary" ~ 2,
+      city_name == "Edmonton" ~ 2,
+      city_name == "Guelph" ~ 1,
+      city_name == "Halifax" ~ 1,
+      city_name == "Hamilton" ~ 1,
+      city_name == "Kelowna" ~ 1,
+      city_name == "Kingston" ~ 1,
+      city_name == "Kitchener" ~ 1,
+      city_name == "Lethbridge" ~ 0,
+      city_name == "London" ~ 1,
+      city_name == "Moncton" ~ 1,
+      city_name == "Montréal" ~ 3,
+      city_name == "Oshawa" ~ 1,
+      city_name == "Ottawa" ~ 2,
+      city_name == "Peterborough" ~ 0,
+      city_name == "Québec" ~ 1,
+      city_name == "Regina" ~ 1,
+      city_name == "Saguenay" ~ 1,
+      city_name == "Saint John" ~ 0,
+      city_name == "Saskatoon" ~ 1,
+      city_name == "Sherbrooke" ~ 1,
+      city_name == "St. Catharines" ~ 1,
+      city_name == "St. John's" ~ 1,
+      city_name == "Sudbury" ~ 0,
+      city_name == "Thunder Bay" ~ 0,
+      city_name == "Toronto" ~ 3, 
+      city_name == "Trois Rivières" ~ 1,
+      city_name == "Vancouver" ~ 3,
+      city_name == "Victoria" ~ 1, 
+      city_name == "Windsor" ~ 1,
+      city_name == "Winnipeg" ~ 1))
+
+
+dataset_2016$city_size <- factor(dataset_2016$city_size,
+                                  levels = c(0,1,2,3),
+                                  labels = c("Small", "Medium", "Large", "Extra Large")) 
+
+# creating indicator variables for missingness on the home values outcomes 
+
+dataset_2016 <- dataset_2016 %>% 
+                mutate(zero_dwelling_value_2016 = case_when(
+                  mean_dwelling_value_2016 != 0 ~ 0,
+                  mean_dwelling_value_2016 == 0 ~ 1))
+                  
+dataset_2016$zero_dwelling_value_2016 <- factor(dataset_2016$zero_dwelling_value_2016,
+                                  levels = c(0,1),
+                                  labels = c("Not Zero", "Zero"))  
+
+# *creating log transformed versions of the outcome variable
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "log_dwelling_value_2016" = log(dataset_2016$median_dwelling_value_2016),
+             .after = "median_dwelling_value_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+             "log_mean_dwelling_value_2016" = log(dataset_2016$mean_dwelling_value_2016),
+             .after = "mean_dwelling_value_2016")
+
+# hist(dataset_2016$median_dwelling_value_2016)
+# hist(dataset_2016$log_dwelling_value_2016)
+
+
+#######################################################################################################################
+
+# group-mean centering
+
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_walkability_2016" = misty::center(dataset_2016$z_ALE_score_2016, type = "CWC", cluster = dataset_2016$city_name),
+              .after = "z_ALE_score_2016")
+
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_transit_score_2016" = misty::center(dataset_2016$ALE_transit_score_2016, type = "CWC", 
+                                                          cluster = dataset_2016$city_name),
+              .after = "ALE_transit_score_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_aged_56_plus_2016" = misty::center(dataset_2016$prop_aged_56_plus_2016, type = "CWC", cluster =
+                                                             dataset_2016$city_name),
+              .after = "prop_aged_56_plus_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_aged_26_to_55_2016" = misty::center(dataset_2016$prop_aged_26_to_55_2016, type = "CWC", cluster =
+                                                              dataset_2016$city_name),
+              .after = "prop_aged_26_to_55_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_aged_6_to_25_2016" = misty::center(dataset_2016$prop_aged_6_to_25_2016, type = "CWC", cluster =
+                                                             dataset_2016$city_name),
+              .after = "prop_aged_6_to_25_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_under_5_2016" = misty::center(dataset_2016$prop_aged_under_5_years_2016, type = "CWC", cluster =
+                                                        dataset_2016$city_name),
+              .after = "prop_aged_under_5_years_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_rooms_2016" = misty::center(dataset_2016$avg_rooms_2016, type = "CWC", cluster = dataset_2016$city_name),
+              .after = "avg_rooms_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_houses_2016" = misty::center(dataset_2016$prop_houses_2016, type = "CWC", cluster = dataset_2016$city_name),
+              .after = "prop_houses_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_condition_2016" = misty::center(dataset_2016$prop_good_condition_2016, type = "CWC", cluster =
+                                                          dataset_2016$city_name),
+              .after = "prop_good_condition_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_rescaled_income_2016" = misty::center(dataset_2016$rescaled_income_2016, type = "CWC", cluster =
+                                                                dataset_2016$city_name),
+              .after = "rescaled_income_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_homeowners_2016" = misty::center(dataset_2016$prop_homeowners_2016, type = "CWC", cluster = dataset_2016$city_name),
+              .after = "prop_homeowners_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_non_minorities_2016" = misty::center(dataset_2016$prop_non_minorities_2016, type = "CWC", cluster =
+                                                        dataset_2016$city_name),
+              .after = "prop_non_minorities_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_non_immigrants_2016" = misty::center(dataset_2016$prop_non_immigrants_2016, type = "CWC", cluster =
+                                                        dataset_2016$city_name),
+              .after = "prop_non_immigrants_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_non_movers_1_yr_2016" = misty::center(dataset_2016$prop_non_movers_1_yr_2016, type = "CWC", cluster =
+                                                         dataset_2016$city_name),
+              .after = "prop_non_movers_1_yr_2016")
+
+dataset_2016 <- dataset_2016 %>% 
+  add_column(., 
+              "group_mc_non_movers_5_yr_2016" = misty::center(dataset_2016$prop_non_movers_5_yr_2016, type = "CWC", cluster =
+                                                         dataset_2016$city_name),
+              .after = "prop_non_movers_5_yr_2016")
+
+
+```
+
+
+############################################### Missingness ########################################
+########## For detailed analysis of missingness of shelter cost & dwelling value, ##################
+########## see Appendix: "HAWC supplementary analyses of outcome missingness"     ##################
+
+
+# Restrict to cities with transit data & create re-codes using the analytic samples - MUST RUN
+
+```{r}
+
+## restrict 2016 sample to cities that had transit data in 2016
+
+dataset_2016 <- dataset_2016 %>% 
+  filter(transit_DA == "Yes") # n = 35,226, across 31 CMAs
+
+dataset_2016 %>% 
+  count(city_name)
+
+table(dataset_2016$city_name)
+
+# drop unused levels for city_name 
+
+dataset_2016$city_name <- droplevels(dataset_2016$city_name)
+table(dataset_2016$city_name)
+
+```  
+
+
+# Drop missing data and create city-level variables (median walkability and home values and then ranks between cities) - MUST RUN
+
+```{r}
+
+# drop DAs that are missing any data
+
+dataset_2016 <- dataset_2016 %>% 
+  drop_na()  # 6% of the data
+
+# analytic sample sizes 
+
+# 2016 = 33,026 (94%)
+
+# create aggregated variables for group-mean walkability (mean walkability for each city)
+    
+# dataset_2016 <-  dataset_2016 %>% 
+#   group_by(city_name) %>% 
+#   mutate(mean_city_walkability_2016 = mean(z_ALE_score_2016, na.rm = TRUE))  %>% 
+#   ungroup()
+# 
+
+dataset_2016 <- dataset_2016 %>%
+  group_by(city_name) %>%
+  mutate(mean_city_transit_score_2016 = mean(ALE_transit_score_2016, na.rm = TRUE))  %>%
+  ungroup()
+
+# create aggregated variables for city-level median walkability (median walkability for each city)
+
+dataset_2016 <-  dataset_2016 %>% 
+  group_by(city_name) %>% 
+  mutate(median_city_t_walkability_2016 = median(ALE_transit_score_2016, na.rm = TRUE)) %>% 
+  ungroup()
+
+dataset_2016 %>% 
+  group_by(city_name) %>% 
+  get_summary_stats(median_city_t_walkability_2016)
+
+# create aggregated variables for home values (mean home value for each city)
+
+dataset_2016 <- dataset_2016 %>% 
+  group_by(city_name) %>% 
+  mutate(mean_city_home_value_2016 = mean(mean_dwelling_value_2016, na.rm = TRUE)) %>% 
+  ungroup()
+
+dataset_2016 <- dataset_2016 %>% 
+  group_by(city_name) %>% 
+  mutate(median_city_home_value_2016 = median(median_dwelling_value_2016, na.rm = TRUE)) %>% 
+  ungroup()
+
+# create ranking variables for cities on median walkability and home values
+
+dataset_2016 <-  dataset_2016 %>% 
+  mutate(rank_city_median_t_walkability_2016 = dense_rank(desc(median_city_t_walkability_2016)))
+
+dataset_2016 <-  dataset_2016 %>% 
+  mutate(rank_city_median_dwelling_cost_2016 = dense_rank(desc(median_city_home_value_2016)))
+
+ 
+# dataset_2016 %>% 
+#    group_by(city_name) %>% 
+#    get_summary_stats(rank_city_dwelling_cost_2016, type = "full")  
+# 
+# dataset_2016 %>% 
+#    filter(transit_DA == "Yes") %>%
+#    group_by(city_name) %>% 
+#    get_summary_stats(rank_city_transit_score_2016, type = "full")  
+
+
+# check how many proportion variables had to be truncated - using variable from before all proportion variables were truncated at 1 
+
+dataset_2016 %>% 
+    filter(proportion_aged_56_plus_2016 > 1) %>% 
+    get_summary_stats(proportion_aged_56_plus_2016)
+
+dataset_2016 %>% 
+    filter(proportion_aged_26_to_55_2016 > 1) %>% 
+    get_summary_stats(proportion_aged_26_to_55_2016)
+
+dataset_2016 %>% 
+    filter(proportion_aged_6_to_25_2016 > 1) %>% 
+    get_summary_stats(proportion_aged_6_to_25_2016)
+
+# dataset_2016 %>%
+#     filter(proportion_aged_under_5_years_2016 > 1) %>%
+#     get_summary_stats(proportion_aged_under_5_years_2016)
+
+dataset_2016 %>% 
+    filter(proportion_houses_2016 > 1) %>% 
+    get_summary_stats(proportion_houses_2016)
+
+dataset_2016 %>% 
+    filter(proportion_good_condition_2016 > 1) %>% 
+    get_summary_stats(proportion_good_condition_2016)
+
+dataset_2016 %>% 
+    filter(proportion_non_minorities_2016 > 1) %>% 
+    get_summary_stats(proportion_non_minorities_2016)
+
+dataset_2016 %>% 
+    filter(proportion_non_immigrants_2016 > 1) %>% 
+    get_summary_stats(proportion_non_immigrants_2016)
+
+dataset_2016 %>% 
+    filter(proportion_homeowners_2016 > 1) %>% 
+    get_summary_stats(proportion_homeowners_2016)
+
+dataset_2016 %>% 
+    filter(proportion_non_movers_1_yr_2016 > 1) %>% 
+    get_summary_stats(proportion_non_movers_1_yr_2016)
+
+# dataset_2016 %>%
+#     filter(proportion_non_movers_5_yr_2016 > 1) %>%
+#     get_summary_stats(proportion_non_movers_5_yr_2016)
+# 
+# dataset_2016 %>%
+#     filter(subsidized_housing_percent_2016 > 100) %>%
+#     get_summary_stats(subsidized_housing_percent_2016, type = "five")
+# 
+
+# drop intermediary coding variables 
+
+dataset_2016 <-  dataset_2016 %>% 
+   select(-c("proportion_aged_56_plus_2016", "proportion_aged_26_to_55_2016", "proportion_aged_6_to_25_2016", 
+"proportion_aged_under_5_years_2016", "proportion_houses_2016", "proportion_good_condition_2016", 
+"proportion_non_minorities_2016", "proportion_non_immigrants_2016", "proportion_homeowners_2016", "proportion_non_movers_1_yr_2016", "COL1", "COL2", "COL17", "COL18", "COL19",
+"proportion_non_movers_5_yr_2016", "zero_dwelling_value_2016", "total_dwellings_by_tenure_2016", "owned_dwellings_2016", "rented_dwellings_2016", "band_dwellings_2016", "total_dwellings_by_condition_2016", "dwellings_regular_maintenance_2016", "dwellings_needing_repairs_2016", "total_dwellings_by_age_2016", "dwellings_before_1960_2016", "dwellings_61_to_80_2016", "dwellings_81_to_90_2016", "dwellings_91_to_00_2016", "dwellings_01_to_05_2016", "dwellings_06_to_10_2016", "total_dwellings_by_type_2016", "detached_houses_2016", "tall_apartments_2016", "total_dwellings_by_condo_status", "other_attached_dwellings_2016", "movable_dwellings_2016", "total_mobility_one_year_2016", "non_movers_one_year_2016", "movers_one_year_2016", "total_mobility_five_year_2016", "non_movers_five_year_2016", "movers_five_year_2016", "total_population_by_minority_2016", "minorities_2016", "non_minorities_2016", "total_population_by_immigrant_2016", "non_immigrants_2016", "immigrants_2016", "non_permanent_residents_2016"))
+
+```
+
+
+####################### Checking for Errors and Outliers & Descriptive Statistics ########################################
+
+
+```{r, eval = FALSE}
+
+# dataset_2016 %>%
+#    get_summary_stats(c(intersections_2016, dwelling_density_2016, z_intersections_2016,
+#                        z_dwelling_density_2016, z_ALE_score_2016, ALE_class_2016, 
+#                        ALE_transit_score_2016), type = "common")
+# 
+# dataset_2016 %>% 
+#   group_by(city_name) %>% 
+#   get_summary_stats(ALE_transit_score_2016, type = "common")
+
+# how about the outcome?
+
+dataset_2016 %>% 
+  get_summary_stats(mean_dwelling_value_2016, type = "common")
+
+# very positively skewed
+
+# much better if we use the log_dwelling_value variable
+
+# hist(dataset_2006$log_dwelling_value_2006)
+# hist(dataset_2016$log_dwelling_value_2016)
+
+
+# how about the covariates?
+
+# table_covariates_2016 <- dataset_2016 %>%
+#    get_summary_stats(c(avg_rooms_2016, median_income_2016, prop_aged_56_plus_2016, prop_aged_26_to_55_2016,
+#                        prop_aged_6_to_25_2016, prop_aged_under_5_years_2016, prop_houses_2016, prop_good_condition_2016,
+#                        prop_non_minorities_2016, prop_non_immigrants_2016, prop_homeowners_2016, prop_non_movers_1_yr_2016,
+#                        prop_non_movers_5_yr_2016), type = "common")
+# 
+# flextable(table_covariates_2016)
+
+# 2016
+
+## Checking for errors - BE characteristics 
+
+dataset_2016 %>%
+   get_summary_stats(c(z_ALE_score_2016, ALE_transit_score_2016), type = "full")
+
+# how about the covariates?
+
+# table_covariates_2016 <- dataset_2016 %>%
+#    get_summary_stats(c(avg_rooms_2016, median_income_2016, prop_aged_56_plus_2016, prop_aged_26_to_55_2016,
+#                        prop_aged_6_to_25_2016, prop_aged_under_5_years_2016, prop_houses_2016, prop_good_condition_2016,
+#                        prop_non_minorities_2016, prop_non_immigrants_2016, prop_homeowners_2016, prop_non_movers_1_yr_2016,
+#                        prop_non_movers_5_yr_2016), type = "common")
+# flextable(table_covariates_2016)
+# 
+# table_transit_covariates_2016 <- dataset_2016_with_transit %>%
+#    get_summary_stats(c(avg_rooms_2016, median_income_2016, prop_aged_56_plus_2016, prop_aged_26_to_55_2016,
+#                        prop_aged_6_to_25_2016, prop_aged_under_5_years_2016, prop_houses_2016, prop_good_condition_2016,
+#                        prop_non_minorities_2016, prop_non_immigrants_2016, prop_homeowners_2016, prop_non_movers_1_yr_2016,
+#                        prop_non_movers_5_yr_2016), type = "common")
+# flextable(table_transit_covariates_2016)
+
+
+# dataset_2016 %>%
+#    group_by(city_name) %>% 
+#    get_summary_stats(c(mean_dwelling_value_2016, subsidized_housing_percent_2016), type = "common")
+#  
+# 
+# dataset_2016 %>%
+#   get_summary_stats(median_income_2016, type = "full")
+#
+#   count_by_city_size_2016 <- dataset_2016 %>%
+#    group_by(city_size) %>%
+#    count()
+#  
+#  flextable(count_by_city_size_2016)
+
+# walkability_by_city_size <- dataset_2016  %>%
+#   group_by(city_size) %>%
+#   get_summary_stats(z_ALE_score_2016, type = "quantile")
+# 
+# flextable(walkability_by_city_size)
+# 
+# proportion_houses_by_city_size <- dataset_2016  %>%
+#   group_by(city_size) %>%
+#   get_summary_stats(prop_houses_2016, type = "quantile")
+# 
+# flextable(proportion_houses_by_city_size)
+
+
+# how does mean city walkabililty differ by city size
+
+dataset_2016 %>% 
+  group_by(city_size) %>% 
+  get_summary_stats(mean_city_transit_score_2016, type = "common")
+
+```
+
+
+# Correlations
+
+```{r, include = TRUE}
+
+# pearson correlations
+corr_table_2016 <- dataset_2016 %>% 
+  select(c(city_name, ALE_transit_score_2016, log_dwelling_value_2016)) %>% 
+  group_by(city_name) %>% 
+  correlation::correlation()
+
+# kable(corr_table_2016, digits = 2)
+
+# partial correlations (adjusting for proportion houses)
+partial_corr_table_2016 <- dataset_2016 %>%
+  select(city_name, ALE_transit_score_2016, log_dwelling_value_2016, prop_houses_2016) %>%
+  group_by(city_name) %>%
+  correlation(partial = TRUE)
+
+# kable(partial_corr_table_2016, digits = 2)
+
+# Spearman correlation for city-level median walkability and city-level median home values
+
+medians_table_2016 <- dataset_2016 %>% 
+  select(city_name, median_city_t_walkability_2016, median_city_home_value_2016) %>% 
+  group_by(city_name) %>% 
+  summarise(
+    median_city_t_walkability = median(median_city_t_walkability_2016),
+    median_home_value = median(median_city_home_value_2016))
+
+flex_medians_table_2016 <- flextable(medians_table_2016)
+# print(flex_medians_table_2016, preview = "docx")
+
+medians_table_2016 %>% 
+  correlation(method = "spearman")
+
+```
+
+############################################################################################################################################################################################################################################################
+
+
+# Multilevel modeling - 2016 - transit walkability
+
+```{r}
+
+# Empty model 
+
+empty_model_t_2016 <- lmer(log_dwelling_value_2016 ~ (1 | city_name), data = dataset_2016)
+tab_model(empty_model_t_2016)
+
+# bivariate random intercepts model
+r_intercepts_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016 + 
+                              (1 | city_name), data = dataset_2016)
+tab_model(empty_model_t_2016, r_intercepts_t_2016)
+anova(empty_model_t_2016, r_intercepts_t_2016)
+plot_model(r_intercepts_t_2016, type = "re")
+
+# bivariate random slopes mode
+r_slopes_t_1_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016 + 
+                            (1 + group_mc_transit_score_2016 | city_name), data = dataset_2016)
+tab_model(empty_model_t_2016, r_intercepts_t_2016, r_slopes_t_1_2016)
+anova(r_intercepts_t_2016, r_slopes_t_1_2016)
+plot_model(r_slopes_t_1_2016, type = "re")
+
+tab_model(r_slopes_t_1_2016)
+check_model(r_slopes_t_1_2016)
+
+compare_performance(r_intercepts_t_2016, r_slopes_t_1_2016)
+
+reffects_r_slopes_t_1_2016 <- as_tibble(ranef(r_slopes_t_1_2016))
+slopes_r_slopes_t_1_2016 <- 
+  reffects_r_slopes_t_1_2016 %>% 
+  filter(term == "group_mc_transit_score_2016") %>% # keep just the slope and discard intercepts
+  mutate(slope = condval + fixef(r_slopes_t_1_2016)[2]) # add the main slope from the model
+hist(slopes_r_slopes_t_1_2016$slope)
+
+slopes_r_slopes_t_1_2016 %>%
+get_summary_stats(slope)
+
+slopes_r_slopes_t_1_2016_table <- slopes_r_slopes_t_1_2016 %>%
+   select(term, grp, slope) %>%
+   mutate(slope = round(slope, 2)) %>%
+     arrange(desc(slope))
+
+slopes_r_slopes_t_1_2016_table <- flextable(slopes_r_slopes_t_1_2016_table)  
+slopes_r_slopes_t_1_2016_table
+
+# adding the level 2 predictor of walkability (mean walkability of the city)
+
+r_slopes_t_2_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016 + mean_city_transit_score_2016 +
+                          (1 + group_mc_transit_score_2016 | city_name), data = dataset_2016)
+anova(r_slopes_t_1_2016, r_slopes_t_2_2016)
+tab_model(empty_model_t_2016, r_intercepts_t_2016, r_slopes_t_1_2016, r_slopes_t_2_2016)
+
+tab_model(r_slopes_t_2_2016)
+
+reffects_r_slopes_t_2_2016 <- as_tibble(ranef(r_slopes_t_2_2016))
+slopes_r_slopes_t_2_2016 <- 
+  reffects_r_slopes_t_2_2016 %>% 
+  filter(term == "group_mc_transit_score_2016") %>% # keep just the slope and discard intercepts
+  mutate(slope = condval + fixef(r_slopes_t_2_2016)[2]) # add the main slope from the model
+hist(slopes_r_slopes_t_2_2016$slope)
+
+slopes_r_slopes_t_1_2016 %>%
+get_summary_stats(slope)
+
+slopes_r_slopes_t_2_2016_table <- slopes_r_slopes_t_2_2016 %>%
+   select(term, grp, slope) %>%
+   mutate(slope = round(slope, 2)) %>%
+     arrange(desc(slope))
+
+slopes_r_slopes_t_2_2016_table <- flextable(slopes_r_slopes_t_2_2016_table)  
+slopes_r_slopes_t_2_2016_table
+
+# testing for non-linear associations of walkability and dwelling value 
+
+r_slopes_t_3_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016 + I(group_mc_transit_score_2016^2) +
+                          mean_city_transit_score_2016 +
+                          (1 + group_mc_transit_score_2016 + I(group_mc_transit_score_2016^2) | city_name),
+                          data = dataset_2016)
+tab_model(empty_model_t_2016, r_intercepts_t_2016, r_slopes_t_1_2016, r_slopes_t_2_2016, r_slopes_t_3_2016)
+compare_performance(empty_model_t_2016, r_intercepts_t_2016, r_slopes_t_1_2016, r_slopes_t_2_2016, r_slopes_t_3_2016)
+tab_model(r_slopes_t_3_2016)
+
+anova(r_slopes_t_2_2016, r_slopes_t_3_2016)
+compare_performance(r_slopes_t_2_2016, r_slopes_t_3_2016)
+
+anova(r_slopes_t_1_2016, r_slopes_t_3_2016)
+
+```
+
+# Multi-level modeling - covariate selection 
+
+```{r}
+
+# random slopes models with just age category & dwelling value 
+
+mlm_age_t_1 <- lmer(log_dwelling_value_2016 ~ group_mc_aged_56_plus_2016 +
+                      (1 + group_mc_aged_56_plus_2016 | city_name), data = dataset_2016)
+tab_model(mlm_age_t_1)
+
+mlm_age_t_2 <- lmer(log_dwelling_value_2016 ~ group_mc_aged_26_to_55_2016 +
+                      (1 + group_mc_aged_26_to_55_2016 | city_name), data = dataset_2016)
+tab_model(mlm_age_t_2)
+
+mlm_age_t_3 <- lmer(log_dwelling_value_2016 ~ group_mc_aged_6_to_25_2016 + 
+                      (1 + group_mc_aged_6_to_25_2016 | city_name), data = dataset_2016)
+tab_model(mlm_age_t_3)
+
+mlm_age_t_4 <- lmer(log_dwelling_value_2016 ~ group_mc_under_5_2016 + 
+                      (1 + group_mc_under_5_2016 | city_name), data = dataset_2016)
+tab_model(mlm_age_t_4)
+tab_model(mlm_age_t_1, mlm_age_t_2, mlm_age_t_3, mlm_age_t_4)
+
+######## number of rooms per home
+
+mlm_rooms_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_rooms_2016 + 
+                           (1 + group_mc_rooms_2016 | city_name), data = dataset_2016)
+tab_model(mlm_rooms_t_2016)
+
+####### proportion single-family homes in neighbourhood
+
+mlm_houses_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_houses_2016 + 
+                            (1 + group_mc_houses_2016 | city_name), data = dataset_2016)
+tab_model(mlm_houses_t_2016)
+
+###### proportion homes in good condition in neighbourhood
+
+mlm_condition_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_condition_2016 + 
+                               (1 + group_mc_condition_2016 | city_name), data = dataset_2016)
+tab_model(mlm_condition_t_2016)
+
+# mean of median neighbourhood incomes
+
+mlm_income_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_rescaled_income_2016 +
+                            (1 + group_mc_rescaled_income_2016 | city_name), data = dataset_2016)
+tab_model(mlm_income_t_2016)
+
+## proportion home-owners in the neighbourhood
+
+mlm_homeowners_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_homeowners_2016 + 
+                                (1 + group_mc_homeowners_2016 | city_name), data = dataset_2016)
+tab_model(mlm_homeowners_t_2016)
+
+# proportion non-minorities
+
+mlm_non_minorities_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_non_minorities_2016 + 
+                                    (1 + group_mc_non_minorities_2016 | city_name), data = dataset_2016)
+tab_model(mlm_non_minorities_t_2016)
+
+# proportion non-immigrants
+
+mlm_non_immigrants_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_non_immigrants_2016 +
+                                    (1 + group_mc_non_immigrants_2016 | city_name), data = dataset_2016)
+tab_model(mlm_non_immigrants_t_2016)
+plot_model(mlm_non_immigrants_t_2016, type = 're')
+
+# correlations for racialized people
+
+dataset_2016 %>% 
+  select(log_dwelling_value_2016, 
+         group_mc_non_minorities_2016, group_mc_non_immigrants_2016) %>% 
+  correlation()
+
+# proportion non-movers 1 year
+
+mlm_non_movers_1_yr_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_non_movers_1_yr_2016 + 
+                                     (1 + group_mc_non_movers_1_yr_2016 | city_name), data = dataset_2016)
+tab_model(mlm_non_movers_1_yr_t_2016)
+
+# proportion non-movers 5 years
+
+mlm_non_movers_5_yr_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_non_movers_5_yr_2016 + 
+                                     (1 + group_mc_non_movers_5_yr_2016 | city_name), data = dataset_2016)
+tab_model(mlm_non_movers_5_yr_t_2016)
+
+# correlations for residential stability
+dataset_2016 %>% 
+  select(log_dwelling_value_2016, 
+         group_mc_non_movers_1_yr_2016, group_mc_non_movers_5_yr_2016) %>% 
+  correlation()
+```
+
+# MLM Modeling, with covariates 
+
+```{r}
+
+mlm_t_house <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016 + mean_city_transit_score_2016 +
+                group_mc_under_5_2016 +
+                group_mc_houses_2016 + group_mc_condition_2016 + group_mc_rooms_2016 +
+                (1 + group_mc_transit_score_2016 | city_name), data = dataset_2016)
+tab_model(mlm_t_house)
+
+mlm_t_neighbourhood <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016 + mean_city_transit_score_2016 + 
+                group_mc_rescaled_income_2016 + group_mc_homeowners_2016 + 
+                group_mc_non_minorities_2016 + group_mc_non_immigrants_2016 +
+                group_mc_non_movers_5_yr_2016 +
+                (1 + group_mc_transit_score_2016 | city_name), data = dataset_2016)
+tab_model(mlm_t_neighbourhood)
+
+
+mlm_all_additive_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016 + mean_city_transit_score_2016 +
+                      city_size +
+                      group_mc_under_5_2016 +   
+                      group_mc_houses_2016 + group_mc_condition_2016 + group_mc_rooms_2016 +
+                      group_mc_rescaled_income_2016 + group_mc_homeowners_2016 + 
+                      group_mc_non_minorities_2016 + group_mc_non_immigrants_2016 +
+                      group_mc_non_movers_5_yr_2016 +
+                      (1 + group_mc_transit_score_2016 | city_name), data = dataset_2016)
+tab_model(mlm_all_additive_t_2016)
+tab_model(mlm_t_house, mlm_t_neighbourhood, mlm_all_additive_t_2016)
+check_model(mlm_all_additive_t_2016)
+
+
+```
+
+# Interactions - GROUP mean centered 
+
+```{r}
+
+# Interactions - level 1 variable (proportion houses)
+
+# also include proportion houses as a random effect 
+
+mlm_level_1_interaction_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016*group_mc_houses_2016 +
+                      mean_city_transit_score_2016 + city_size +
+                      group_mc_under_5_2016 + group_mc_condition_2016 + group_mc_rooms_2016 +
+                      group_mc_rescaled_income_2016 + group_mc_homeowners_2016 + 
+                      group_mc_non_minorities_2016 + group_mc_non_immigrants_2016 + group_mc_non_movers_5_yr_2016 +
+                      (1 + group_mc_transit_score_2016*group_mc_houses_2016 | city_name),
+                      data = dataset_2016)
+tab_model(mlm_level_1_interaction_t_2016)
+plot_model(mlm_level_1_interaction_t_2016, type = "int")
+
+
+# level 2 interaction
+
+mlm_level_2_interaction_t_2016 <- lmer(log_dwelling_value_2016 ~ group_mc_transit_score_2016*city_size +
+                      mean_city_transit_score_2016 + 
+                      group_mc_under_5_2016 + group_mc_condition_2016 + group_mc_rooms_2016 + group_mc_houses_2016 +
+                      group_mc_rescaled_income_2016 + group_mc_homeowners_2016 + 
+                      group_mc_non_minorities_2016 + group_mc_non_immigrants_2016 + 
+                      group_mc_non_movers_5_yr_2016 +
+                      (1 + group_mc_transit_score_2016 | city_name), data = dataset_2016)
+tab_model(mlm_level_2_interaction_t_2016)
+plot_model(mlm_level_2_interaction_t_2016, type = "int")
+check_model(mlm_level_2_interaction_t_2016)
+
+# both interactions
+
+mlm_both_interaction_t_2016 <- lmer(log_dwelling_value_2016 ~
+                      group_mc_transit_score_2016*city_size*group_mc_houses_2016 +
+                      mean_city_transit_score_2016 + 
+                      group_mc_under_5_2016 + group_mc_condition_2016 + group_mc_rooms_2016 + 
+                      group_mc_rescaled_income_2016 + group_mc_homeowners_2016 + 
+                      group_mc_non_minorities_2016 + group_mc_non_immigrants_2016 + group_mc_non_movers_5_yr_2016 +
+                      (1 + group_mc_transit_score_2016*group_mc_houses_2016 | city_name),
+                      data = dataset_2016)
+tab_model(mlm_both_interaction_t_2016)
+check_model(mlm_both_interaction_t_2016)
+plot_model(mlm_both_interaction_t_2016, type = "int")  
+
+  
+anova(mlm_all_additive_t_2016, mlm_both_interaction_t_2016)
+
+tab_model(mlm_all_additive_t_2016, mlm_both_interaction_t_2016)
+
+```
+
+# Tables - using flextable
+
+```{r}
+
+# refer to the epi R handbook (https://epirhandbook.com/en/tables-for-presentation.html) & youtube tutorial by the flextable creator (https://www.youtube.com/watch?v=-EuPFZCTnHE) for table-help
+
+############################### Table 1 ##########################################################
+
+table_1_descriptives_2016_df <- dataset_2016 %>%
+   select(c(city_name, city_size, prop_houses_2016, prop_aged_under_5_years_2016,
+            prop_good_condition_2016, avg_rooms_2016, median_income_2016, prop_homeowners_2016,
+            prop_non_minorities_2016, prop_non_immigrants_2016, prop_non_movers_5_yr_2016)) %>%
+   group_by(city_name) %>%
+     summarise(
+     fmode(city_size),
+     n = n(),
+     mean_prop_houses = round(mean(prop_houses_2016), digits = 2),
+     mean_aged_under_5 = round(mean(prop_aged_under_5_years_2016), digits = 2),
+     mean_good_condition = round(mean(prop_good_condition_2016), digits = 2),
+     mean_rooms = round(mean(avg_rooms_2016), digits = 2),
+     median_income = round(median(median_income_2016), digits = 0),
+     mean_homeowners = round(mean(prop_homeowners_2016), digits = 2),
+     mean_non_minorities = round(mean(prop_non_minorities_2016), digits = 2),
+     mean_non_immigrants = round(mean(prop_non_immigrants_2016), digits = 2),
+     non_movers_5 = round(mean(prop_non_movers_5_yr_2016), digits = 2)) %>% 
+   arrange(desc(n))
+
+(table_1_descriptives_2016 <- flextable(table_1_descriptives_2016_df) %>% 
+ set_header_labels(city_name = "City", 'fmode(city_size)' = "Size", 
+                   n = "DAs (n)", 
+                   mean_prop_houses = "Proportion Detached Homes", mean_aged_under_5 = "Proportion Homes <5 Years Old",
+                   mean_good_condition = "Proportion Good Condition", mean_rooms = "Mean Number of Rooms",
+                   median_income = "Median Household Income", mean_homeowners = "Proportion Home-Owners", 
+                   mean_non_minorities = "Proportion Non-Minorities", mean_non_immigrants = "Proportion Non-Immigrants",
+                   non_movers_5 = "Proportion Non-Movers 5 Years") %>% 
+  add_header_row(top = TRUE,
+                 colwidths = c(12), 
+                values = c("Table 1. Neighbourhood (DA) Dwelling Characteristics and Social Characteristics, by City, Canadian CMAs with transit data, 2016")) %>% 
+  theme_zebra(odd_header = "white") %>% 
+  hline_bottom(part = "header") %>% 
+  hline_bottom(part = "body") %>% 
+  colformat_num(j = 8, prefix = "$"))
+
+# print(table_1_descriptives_2016, preview = "docx")
+
+########################################## TABLE 2 ###############################################
+
+table_2_BE_and_HV_2016_df <- dataset_2016 %>%
+   select(c(city_name, ALE_transit_score_2016, rank_city_median_t_walkability_2016,  median_dwelling_value_2016, rank_city_median_dwelling_cost_2016)) %>%
+   group_by(city_name) %>%
+     summarise(
+     p25_t_walkability = round(quantile(ALE_transit_score_2016, probs = 0.25), digits = 2),
+     p50_t_walkability = round(quantile(ALE_transit_score_2016, probs = 0.50), digits = 2),
+     t_walkability_rank = round(mean(rank_city_median_t_walkability_2016), digits = 0),
+     p75_t_walkability  = round(quantile(ALE_transit_score_2016, probs = 0.75), digits = 2),
+     max_t_walkability = round(max(ALE_transit_score_2016), digits = 2),
+     p25_home_value  = round(quantile(median_dwelling_value_2016, probs = 0.25), digits = 0),
+     p50_home_value = round(quantile(median_dwelling_value_2016, probs = 0.50), digits = 0),
+     home_value_rank = round(median(rank_city_median_dwelling_cost_2016), digits = 0),
+     p75_home_value  = round(quantile(median_dwelling_value_2016, probs = 0.75), digits = 0),
+     max_home_value  = round(max(median_dwelling_value_2016), digits = 0)) %>% 
+  arrange(desc(p50_t_walkability))
+
+table_2_BE_and_HV_2016 <- flextable(table_2_BE_and_HV_2016_df)  
+table_2_BE_and_HV_2016
+
+(table_2_BE_and_HV_2016 <- flextable(table_2_BE_and_HV_2016_df) %>% 
+ set_header_labels(city_name = "City", p25_t_walkability = "P25 Walkability", p50_t_walkability = "Median walkability",
+                   t_walkability_rank = "Walkability Rank", p75_t_walkability = "P75 Walkability", 
+                   max_t_walkability = "Max Walkability", p25_home_value = "P25 Home Values", 
+                   p50_home_value = "Median Home Values", home_value_rank = "Home Value Ranks", 
+                   p75_home_value = "P75 Home Values", max_home_value = "Max Home Value") %>% 
+  add_header_row(top = TRUE,
+                 colwidths = c(11), 
+                values = c("Table 2. Percentiles of Neighbourhood Walkability and Home Values, Canadian CMAs, 2016")) %>% 
+  theme_zebra(odd_header = "white") %>% 
+  hline_bottom(part = "header") %>% 
+  hline_bottom(part = "body") %>% 
+  colformat_num(j = c(7,8,10,11), prefix = "$"))
+
+#  theme_zebra(even_header = "white", odd_header = "#ccffcc", odd_body = "#ccffcc"))
+
+# print(table_2_BE_and_HV_2016, preview = "docx")
+
+
+########################################## TABLEs of marginal slopes ###############################################
+
+# slopes by groups 
+
+dataset_2016  %>% 
+  get_summary_stats(group_mc_houses_2016, type = "quantile", probs = c(0.10, 0.90)) # -0.42 and 0.44
+
+# margins, dydx(walkability) at(10th and 90th percentile for proportion houses 
+
+slopes_by_both_t_interactions_2016 <-  summary(margins(mlm_both_interaction_t_2016, 
+                at = list(group_mc_houses_2016 = c(-0.42, 0.44),
+                          city_size = c("Small", "Medium", "Large", "Extra Large")),
+                variables = "group_mc_transit_score_2016"))
+flextable(slopes_by_both_t_interactions_2016)
+
+# level-2 interaction only
+slopes_by_level_2_t_interactions_2016 <-  summary(margins(mlm_level_2_interaction_t_2016, 
+                at = list(city_size = c("Small", "Medium", "Large", "Extra Large")),
+                variables = "group_mc_transit_score_2016"))
+flextable(slopes_by_level_2_t_interactions_2016)
+
+# both interactions, but only estimating stratified estimates for city-size
+slopes_by_both_t_interactions_2016 <-  summary(margins(mlm_both_interaction_t_2016, 
+                at = list(city_size = c("Small", "Medium", "Large", "Extra Large")),
+                variables = "group_mc_transit_score_2016"))
+flextable(slopes_by_both_t_interactions_2016)
+
+
+```
+
+# Plots of the interactions
+
+```{r}
+
+dataset_2016 %>%
+   get_summary_stats(group_mc_houses_2016, type = "quantile", probs = c(0.10, 0.5, 0.90))
+
+
+########################################################
+plot_model(mlm_both_interaction_t_2016, 
+           type = "pred", 
+           terms = c("group_mc_transit_score_2016", "city_size", 
+                     "group_mc_houses_2016 [-0.42, 0.44]"),
+           axis.lim = c(5,25))
+
+(figure_1<- plot_model(mlm_both_interaction_t_2016, 
+           type = "pred", 
+           terms = c("group_mc_transit_score_2016", "city_size", 
+                     "group_mc_houses_2016 [-0.42, 0.44]"),
+           axis.lim = c(7,20),
+           title = "Figure 1. Joint-moderation by proportion of detached homes and city size ",
+           axis.title = c("Walkability (z-score)", "Median Home Values (log $)"),
+         #  axis.labels = c("Low Proportion of Detached Homes", "High Proportion of Detached Homes"),
+         # colors = c("firebrick", "lawngreen", "blue", "yellow"), 
+           # colors = "bw", 
+         #  auto.label = FALSE,
+          # scale_linetype_manual(values = -0.42,0.44, labels = c("Low Proportion Detached Homes", "High Proportion Detached Homes")),
+           legend.title = "City Size") +
+           labs(caption = "Note. Low and high proportion were determined using 10th and 90th percentiles of group-mean-centered proportion detached homes.", size = 14) +
+            theme(axis.ticks = element_blank(),
+                          axis.title = element_text(family = "Times New Roman", size = 12),
+                          axis.text = element_text(family = "Times New Roman", size = 10)) +
+           theme_minimal()) 
+  
+# ggsave("figure_1.1.png")
+
+
+# visualizing the city size interaction only
+
+plot_model(mlm_level_2_interaction_t_2016, 
+           type = "pred", 
+           terms = c("group_mc_transit_score_2016", "city_size"),
+           axis.lim = c(5,25))
+```
+
+
+# Univariate graphs
+
+```{r}
+
+
+(transit_walkability_by_city_2016 <- dataset_2016 %>% 
+  mutate(city_name = forcats::fct_reorder(city_name, desc(city_size), .desc = TRUE)) %>% 
+  ggplot(aes(x = ALE_transit_score_2016, y = city_name, fill = city_size)) + 
+  geom_density_ridges(scale = 0.9) +
+  labs(
+    title = "Transit Walkability by City, 2016", 
+    x = NULL,
+    y = NULL,
+    fill = "City Size") +
+    scale_x_continuous(limits = c(-5, 10)) +
+  geom_vline(xintercept = 0) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")) 
+
+
+home_values_by_city_2016 <- dataset_2016 %>% 
+  mutate(city_name = forcats::fct_reorder(city_name, desc(city_size), .desc = TRUE)) %>% 
+  ggplot(aes(x = mean_dwelling_value_2016, y = city_name, fill = city_size)) + 
+  geom_density_ridges(scale = 0.9) +
+  labs(
+    title = "Mean Home Values by City, 2016", 
+    x = "$",
+    y = NULL,
+    fill = "City Size") +
+  scale_x_continuous(limits = c(0, 2000000)) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none") 
+
+
+
+## Univariate graphs
+
+# Histogram of walkability 
+(hist_transit_ALE_2016 <- dataset_2016_with_transit %>% 
+ggplot() +
+    aes(x = ALE_transit_score_2016) +
+    geom_histogram(bins = 35L, fill = "#0c4c8a") +
+    labs(x = "Transit walkability z-scores", 
+         title = "Neighbourhood Transit Walkability for Canadian CMAs", 
+         subtitle = "2016") +
+    theme_classic() +
+      facet_wrap(~ city_name))
+
+
+
+(hist_transit_dwelling_values_2016 <- dataset_2016_with_transit %>% 
+      ggplot() +
+      aes(x = mean_dwelling_value_2016) +
+      geom_histogram(bins = 35L, fill = "#0c4c8a") +
+      labs(x = "Mean dwelling value ($)", y = "", 
+         title = "Neighbourhood Home Values for Canadian CMAs with Transit Data",
+         subtitle = "2016") +
+      theme_classic() +
+      facet_wrap(~ city_name, scales = "free"))
+
+## Histograms for Dwelling Values:
+
+(hist_dwelling_values_2016 <- dataset_2016 %>% 
+       ggplot() +
+      aes(x = mean_dwelling_value_2016) +
+      geom_histogram(bins = 35L, fill = "black") +
+      labs(x = "Mean dwelling value ($)", y = "", 
+         title = "Neighbourhood Home Values for Canadian CMAs",
+         subtitle = "2016") +
+      theme_classic() +
+      facet_wrap(~ city_name, scales = "free"))
+
+```
+
+
+# Bivariate graphs
+
+```{r}
+
+# Scatterplots with loess lines for mean dwelling value & walkability
+
+
+(scatter_2016_by_transit_city <- dataset_2016_with_transit %>% 
+ggplot() +
+ aes(x = ALE_transit_score_2016, y = log_dwelling_value_2016, color = city_size) +
+ geom_point(size = 1L) +
+ geom_smooth(method = "loess") +
+ labs(x = "Transit Walkability (z-score)",
+      y = "Mean Home Value (log $)",
+      subtitle = "2016",
+      title = "Transit Walkability and Home Values by City") +
+ theme_minimal()) +
+ facet_wrap(vars(city_size, city_name), scales = "free", labeller = labeller(.rows = NULL))
+
+# knitr::knit_exit() 
+
+```
+
+
+
+MLM References
+
+https://www.youtube.com/watch?v=1Tw1eIfSyEQ
+https://htmlpreview.github.io/?https://github.com/ccs-amsterdam/r-course-material/blob/master/tutorials/multilevel_models.html
+https://multilevel-analysis.sites.uu.nl/wp-content/uploads/sites/27/2018/02/02Ch2-Basic3449.pdf
+
+
+
+#########################################################################################################################
+#########################################################################################################################
+##################################################################################################################################################################################################################################################
+##################################################################################################################################################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+#########################################################################################################################
+
+
+###############################################    APPENDIX     #########################################################
+
+
+####################### HAWC supplementary analyses of outcome missingness ###################################################
+# Use datasets from after running re-codes, but before dropping DAs with missing data
+
+# dwelling values of of $0 don't make sense
+
+# dwelling values of $0 are either suppressed, or missing - we can't tell which, so we will treat them all as missing
+
+```{r, include = TRUE}
+# Run missingness analyses AFTER restricting sample to CMAs with transit data 
+
+## Checking for the amount of missingness
+
+# show the number of missing values for each variable
+missing_2016 <- sapply(dataset_2016, function(x) sum(is.na(x))) 
+
+# show total missingness as a percentage
+pct_miss_case(dataset_2016)
+
+
+# check for patterns of missing data
+
+# number of missing values per DA
+miss_case_table(dataset_2016)
+
+
+# create an indicator variable for DAs with missing data
+
+# 2016
+nothing_missing_2016 <- as.integer(complete.cases(dataset_2016))
+dataset_2016 <- cbind(dataset_2016,nothing_missing_2016)
+table(dataset_2016$nothing_missing_2016)
+
+
+# compare DAs with missing data and without missing data
+
+
+# 2016 variables
+vars_for_missingness_2016 <- c("median_dwelling_value_2016", "z_ALE_score_2016", "avg_rooms_2016", "prop_aged_under_5_years_2016", "prop_good_condition_2016", "prop_houses_2016", "median_income_2016", "prop_homeowners_2016", "prop_non_immigrants_2016", "prop_non_minorities_2016", "prop_non_movers_5_yr_2016")
+
+
+table_DAs_by_missingness_2016 <- CreateTableOne(vars = vars_for_missingness_2016, data = dataset_2016, strata = "nothing_missing_2016", smd = FALSE, addOverall = FALSE)
+print(table_DAs_by_missingness_2016)
+kableone(table_DAs_by_missingness_2016)
+
+# examining patterns of missingness
+# gg_miss_var(dataset_2016, show_pct = TRUE)
+
+```
+
+
+## Missingness for dwelling value & does the amount of missingness differ by the level-2 unit (CMA)
+
+```{r}
+
+# variables
+descriptive.vars_DV_zero_2016_by_CMA <- c("mean_dwelling_value_2016", "zero_dwelling_value_2016")
+
+# categorical variables
+cat.vars_DV_zero_2016_by_CMA <- c("zero_dwelling_value_2016")
+
+table_DV_zero_2016_by_CMA <- CreateTableOne(vars = descriptive.vars_DV_zero_2016_by_CMA, data = dataset_2016, factorVars = cat.vars_DV_zero_2016_by_CMA, strata = "CMA_name_2016", smd = FALSE, addOverall = TRUE)
+print(table_DV_zero_2016_by_CMA)
+kableone(table_DV_zero_2016_by_CMA)
+
+```
+
+
+References:
+
+Modeling:
+
+
+https://github.com/jeff-hughes/reghelper
+https://quantdev.ssri.psu.edu/sites/qdev/files/RBootcamp_MLMInteractions_2019_0820_Final2.html
+http://www.alexanderdemos.org/Class6.html#example_of_interaction
+https://github.com/leeper/margins
+https://strengejacke.github.io/sjPlot/articles/plot_interactions.html
+https://easystats.github.io/modelbased/reference/estimate_slopes.html
+https://easystats.github.io/modelbased/articles/estimate_slopes.html
+https://strengejacke.github.io/ggeffects/
+https://strengejacke.github.io/ggeffects/articles/introduction_marginal_effects.html
+
+
+
+
+Formatting:
+https://ardata-fr.github.io/flextable-book/index.html
+http://www.cookbook-r.com/Graphs/Axes_(ggplot2)/ 
+https://strengejacke.github.io/sjPlot/reference/sjPlot-themes.html
+https://strengejacke.github.io/sjPlot/articles/tab_mixed.html
+
